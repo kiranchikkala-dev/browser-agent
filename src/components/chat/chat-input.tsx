@@ -1,13 +1,31 @@
+"use client";
 import React from "react";
 import { Textarea } from "../ui/textarea";
 import { ArrowBigDown, ArrowUp } from "lucide-react";
 import { Button } from "../ui/button";
+import { apiClient } from "@/lib/axiosInstance";
+import { useRouter } from "next/navigation";
 
 const ChatInput = () => {
   const [inputValue, setInputValue] = React.useState("");
+  const router = useRouter();
+  const handleSubmit = async () => {
+    const { data } = await apiClient.get("/tasks");
+    if (!data.status) {
+    }
+    const task = data[0];
+
+    router.push(`/task/${task?.id}`);
+  };
+  const handleFormSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (inputValue.trim().length) {
+      handleSubmit();
+    }
+  };
   return (
     <>
-      <form>
+      <form onSubmit={handleFormSubmit}>
         <div className="rounded-3xl border border-input bg-background shadow-sm">
           <Textarea
             aria-label="Chat message"

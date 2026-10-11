@@ -8,6 +8,55 @@
       "when": 1791367381819,
       "tag": "0000_redundant_retro_girl",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1791448911865,
+      "tag": "0001_mysterious_galactus",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1791449002469,
+      "tag": "0002_freezing_patriot",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1791449229806,
+      "tag": "0003_late_barracuda",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1791449428894,
+      "tag": "0004_quick_randall_flagg",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1791705813799,
+      "tag": "0005_giant_ghost_rider",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1791706003709,
+      "tag": "0006_last_joseph",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1791706660410,
+      "tag": "0007_absent_wendell_rand",
+      "breakpoints": true
     }
   ]
 }

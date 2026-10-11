@@ -1,0 +1,14 @@
+{
+  "name": "@app/agent",
+  "private": true,
+  "type": "module",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "dependencies": {
+    "@app/browser": "*",
+    "@app/shared": "*",
+    "@openai/agents": "^0.20.0",
+    "openai": "^7.31.0",
+    "zod": "^4.6.5"
+  }
+}

@@ -7,6 +7,7 @@ apiClient.interceptors.response.use(
     if (response.data && response.data.success === false) {
       return Promise.reject(new Error(response.data.error || "Unknown error"));
     }
+    console.log("🚀 ~ response:", response);
     return response;
   },
   (error) => {

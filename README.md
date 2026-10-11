@@ -9,7 +9,7 @@ An autonomous browser agent. The user submits a natural-language task (e.g. "Fin
 ## 2. Tech stack
 
 - Language: TypeScript (strict)
-- Runtime / package manager: Bun (workspaces)
+- Runtime / package manager: Node.js with npm workspaces
 - Browser automation: Playwright (library usage, not the test runner)
 - Agent framework: OpenAI Agents SDK for TypeScript (`@openai/agents`)
 - Frontend + API: Next.js (App Router)
@@ -17,7 +17,7 @@ An autonomous browser agent. The user submits a natural-language task (e.g. "Fin
 - ORM: Drizzle ORM
 - Validation: Zod (tool params, agent output, env)
 
-If Playwright misbehaves under Bun, run the worker under Node. Everything else stays on Bun.
+The worker runs under Node.js, as does the rest of the application.
 
 ## 3. Architecture
 
@@ -29,7 +29,7 @@ Next.js (UI + API routes)
 PostgreSQL (Drizzle ORM)  <───────┐
    ▲                              │ writes steps / findings / result
    │ claim job (SKIP LOCKED)      │
-Worker (Bun process) ─────────────┘
+Worker (standalone Node.js process) ─────────────┘
    ├─ Agent (OpenAI Agents SDK, streaming run)
    ├─ BrowserSession (Playwright)
    └─ Tools (navigate, observe, click, type_text, extract, ...)
@@ -240,13 +240,13 @@ Conventions:
 
 ```
 docker compose up -d                          # start Postgres
-bun install
+npm install
 npm run db:generate                           # generate a Drizzle migration
 npm run db:migrate                             # apply migrations
 npm run db:studio                              # inspect DB
-bun run scripts/cli.ts "<task>"               # run agent from terminal (no DB/UI)
-bun run --cwd apps/worker src/main.ts         # start worker
-bun run --cwd apps/web dev                    # start web
+npm run cli -- "<task>"                       # run agent from terminal (no DB/UI)
+npm --workspace apps/worker run dev           # start worker
+npm --workspace apps/web run dev              # start web
 ```
 
 ## 12. Build order (status checklist)

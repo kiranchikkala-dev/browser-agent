@@ -1,0 +1,1 @@
+ALTER TABLE "steps" ALTER COLUMN "id" SET DATA TYPE uuid;

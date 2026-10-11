@@ -2,6 +2,7 @@ import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
   /* config options here */
+  transpilePackages: ["@app/db", "@app/shared"],
   experimental: {
     agentFeedback: true,
   },

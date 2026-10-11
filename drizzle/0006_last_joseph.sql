@@ -1,0 +1,1 @@
+ALTER TABLE "findings" ALTER COLUMN "text_id" SET DATA TYPE uuid;

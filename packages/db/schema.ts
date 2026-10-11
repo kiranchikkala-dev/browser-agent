@@ -8,6 +8,7 @@ import {
   timestamp,
   unique,
   index,
+  uuid,
 } from "drizzle-orm/pg-core";
 
 export const taskStatus = pgEnum("task_status", [
@@ -28,7 +29,7 @@ export const stepType = pgEnum("step_type", [
 export const tasks = pgTable(
   "tasks",
   {
-    id: serial("id").primaryKey(),
+    id: uuid("id").defaultRandom().primaryKey(),
     prompt: text("prompt").notNull(),
     status: taskStatus("status").default("QUEUED").notNull(),
     plan: jsonb("plan"),
@@ -52,8 +53,8 @@ export const tasks = pgTable(
 export const steps = pgTable(
   "steps",
   {
-    id: serial("id").primaryKey(),
-    taskId: integer("task_id")
+    id: uuid("id").defaultRandom().primaryKey(),
+    taskId: uuid("task_id")
       .notNull()
       .references(() => tasks.id, { onDelete: "cascade" }),
     index: integer("index").notNull(),
@@ -76,20 +77,23 @@ export const steps = pgTable(
 export const findings = pgTable(
   "findings",
   {
-    id: serial("id").primaryKey(),
-    taskId: integer("task_id")
+    id: uuid("id").primaryKey(),
+    taskId: uuid("task_id")
       .notNull()
       .references(() => tasks.id, { onDelete: "cascade" }),
     data: jsonb("data").notNull(),
     sourceUrl: text("source_url").notNull(),
-    createdAt: timestamp("created_at", { withTimezone: true })
+    createdAt: timestamp("created_at", {
+      withTimezone: true,
+    })
       .defaultNow()
       .notNull(),
   },
-  (table) => [
-    index("findings_task_id_created_at_idx").on(table.taskId, table.createdAt),
-  ],
+  (table) => ({
+    taskIdIndex: index("findings_task_id_idx").on(table.taskId),
+  }),
 );
 
 export type Task = typeof tasks.$inferSelect;
+export type Findings = typeof findings.$inferSelect;
 export type NewTask = typeof tasks.$inferInsert;

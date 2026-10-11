@@ -4,8 +4,6 @@
 
 Flow: the UI creates a task -> the worker claims it -> the agent runs against a Playwright session -> each step is written to the DB -> the UI streams new steps over SSE -> the final result is saved.
 
-## Package boundaries
-
 - `browser`: Playwright wrapper, no knowledge of LLMs or the DB.
 - `agent`: all OpenAI Agents SDK code. It reports progress through an `onEvent` callback and does not touch the DB.
 - `db`: Drizzle client and repositories.
