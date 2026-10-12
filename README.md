@@ -1,277 +1,312 @@
-Guidance for AI coding agents (and humans) working in this repo. Read this before changing code.
+# Browser Agent
 
-## 1. What this project is
+Browser Agent is an autonomous web research assistant. You describe a task in plain English, and one AI agent uses a real Playwright browser to search the web, inspect pages, interact with controls, collect verified findings, and return a structured answer.
 
-An autonomous browser agent. The user submits a natural-language task (e.g. "Find the three cheapest laptops under ₹80,000 with 16GB RAM"). The agent plans, navigates websites with Playwright, interacts with pages, extracts data, decides, and returns a structured final result. Progress streams live to a Next.js UI.
+The project is built as an MVP to make browser automation understandable and observable. Instead of hiding the work behind a loading spinner, the web app shows the plan, browser actions, extracted information, screenshots, and final result as the task runs.
 
-**Scope: MVP.** Prefer the simplest thing that works. Do not add features that are not listed here.
+> **In one sentence:** Browser Agent turns a natural-language request into a live, step-by-step browser workflow that produces evidence-backed results.
 
-## 2. Tech stack
+## Why this project exists
 
-- Language: TypeScript (strict)
-- Runtime / package manager: Node.js with npm workspaces
-- Browser automation: Playwright (library usage, not the test runner)
-- Agent framework: OpenAI Agents SDK for TypeScript (`@openai/agents`)
-- Frontend + API: Next.js (App Router)
-- Database: PostgreSQL 16 in Docker
-- ORM: Drizzle ORM
-- Validation: Zod (tool params, agent output, env)
+Most browser automation demos show only the final answer. That makes it difficult to understand what the agent did, whether it used the right sources, or why it failed.
 
-The worker runs under Node.js, as does the rest of the application.
+Browser Agent is designed around a different idea: every task should be inspectable.
 
-## 3. Architecture
+- The agent explains its plan.
+- Each browser action becomes a visible timeline step.
+- Findings keep their source URL.
+- The final response is validated against a schema.
+- Timeouts, cancellation, blocked pages, and worker shutdowns are handled explicitly.
 
-```
-Next.js (UI + API routes)
-   │  POST /api/tasks        -> create Task (QUEUED)
-   │  GET  /api/tasks/:id/stream (SSE) <- reads Step rows
-   ▼
-PostgreSQL (Drizzle ORM)  <───────┐
-   ▲                              │ writes steps / findings / result
-   │ claim job (SKIP LOCKED)      │
-Worker (standalone Node.js process) ─────────────┘
-   ├─ Agent (OpenAI Agents SDK, streaming run)
-   ├─ BrowserSession (Playwright)
-   └─ Tools (navigate, observe, click, type_text, extract, ...)
-```
+## What the user experience looks like
 
-- `web` and `worker` are **separate processes**. They communicate only through Postgres.
-- Postgres is also the job queue. No Redis.
-- Agent runs are long (minutes). Never run them inside a Next.js route handler.
+1. The user opens the Next.js web app.
+2. They enter a request such as:
 
-## 4. Repo layout
+   ```text
+   Find three laptops under ₹80,000 with 16 GB RAM and include the product links.
+   ```
 
-```
-browser-agent/
-├─ AGENTS.md
-├─ package.json                # workspaces: apps/*, packages/*
-├─ bunfig.toml
-├─ tsconfig.base.json
-├─ docker-compose.yml          # postgres only
-├─ .env.example
-├─ apps/
-│  ├─ web/                     # Next.js
-│  │  ├─ app/
-│  │  │  ├─ page.tsx                       # task form + recent tasks
-│  │  │  ├─ tasks/[id]/page.tsx            # live timeline + result
-│  │  │  └─ api/tasks/
-│  │  │     ├─ route.ts                    # POST create, GET list
-│  │  │     └─ [id]/
-│  │  │        ├─ route.ts                 # GET details, cancel
-│  │  │        ├─ stream/route.ts          # SSE
-│  │  │        └─ screenshots/[stepId]/route.ts
-│  │  ├─ components/                       # TaskForm, StepTimeline, StepCard, ResultTable, StatusBadge, ScreenshotViewer
-│  │  ├─ hooks/useTaskStream.ts            # EventSource wrapper
-│  │  └─ lib/                              # api.ts, sse.ts
-│  └─ worker/
-│     └─ src/
-│        ├─ main.ts            # poll loop, SIGTERM handling
-│        ├─ queue.ts           # claim next QUEUED task
-│        ├─ runTask.ts         # launch browser -> run agent -> save result -> cleanup
-│        ├─ eventSink.ts       # AgentEvent -> Step row (+ screenshot)
-│        ├─ cancellation.ts    # abort when Task.status === CANCELLED
-│        └─ config.ts
-├─ packages/
-│  ├─ agent/                   # ALL OpenAI Agents SDK code
-│  │  └─ src/
-│  │     ├─ index.ts           # public API: runBrowserTask()
-│  │     ├─ runAgent.ts        # run() with stream, maxTurns, context
-│  │     ├─ agent.ts           # the single Agent definition
-│  │     ├─ context.ts         # AgentContext type
-│  │     ├─ prompts/           # system.md, extract.md
-│  │     ├─ tools/             # one file per tool + index.ts
-│  │     ├─ schemas/           # finalResult.ts, finding.ts, events.ts
-│  │     ├─ guardrails/        # inputGuardrail.ts, domainPolicy.ts
-│  │     ├─ events/mapStreamEvent.ts
-│  │     ├─ safety/            # loopDetector.ts, stepBudget.ts
-│  │     └─ llm/client.ts      # OpenAI client for non-agent calls (extract)
-│  ├─ browser/                 # Playwright layer, no LLM knowledge
-│  │  └─ src/
-│  │     ├─ BrowserSession.ts
-│  │     ├─ snapshot/          # buildSnapshot, elementRegistry, formatSnapshot, pageText
-│  │     ├─ interruptions/     # cookieBanners, dialogs
-│  │     ├─ waiting.ts
-│  │     └─ screenshots.ts
-│  ├─ db/
-│  │  ├─ src/schema.ts             # Drizzle table definitions
-│  │  ├─ src/index.ts              # Drizzle database client
-│  │  └─ drizzle/                  # Generated migrations
-│  └─ shared/                  # types, constants, env (Zod)
-├─ data/screenshots/{taskId}/{stepIndex}.png   # gitignored
-└─ scripts/cli.ts, seed.ts
+3. The web app creates a task with status `QUEUED`.
+4. The worker claims the task and changes its status to `RUNNING`.
+5. The agent opens a browser, creates a plan, searches and navigates through pages, and uses browser tools to interact with the page.
+6. The UI receives new steps over Server-Sent Events and displays them live.
+7. The agent records verified candidates and their source URLs.
+8. The worker saves the validated final result, closes the browser, and marks the task `SUCCEEDED`.
+9. If something goes wrong, the task is marked `FAILED` or `CANCELLED`, and any useful partial findings are preserved.
+
+## How the flow works, simply
+
+```text
+User request
+     │
+     ▼
+Next.js UI ── POST /api/tasks ──► PostgreSQL
+     ▲                               │
+     │                               │ worker claims QUEUED task
+     │                               ▼
+     │                         Worker process
+     │                               │
+     │                               ▼
+     │                     OpenAI Agents SDK agent
+     │                               │
+     │                               ▼
+     │                         Playwright browser
+     │                               │
+     │                    steps, findings, screenshots
+     │                               │
+     └──── live SSE stream ◄────────┘
 ```
 
-## 5. Dependency rules (enforce these)
+There are two important design choices behind this flow:
 
-```
-web ──────► db, shared
-worker ───► agent, browser, db, shared
-agent ────► browser (types only), shared
-browser ──► shared
-db ───────► shared
-```
+- **The web app and worker are separate processes.** Browser runs can take minutes, so they do not run inside a Next.js request handler.
+- **PostgreSQL is also the job queue.** The worker atomically claims the oldest queued task using `FOR UPDATE SKIP LOCKED`. This keeps the MVP small and avoids adding Redis.
 
-- `browser` must never import `agent` or `db`. It is a pure Playwright wrapper.
-- `agent` must never import `db`. It reports progress via `ctx.onEvent(...)`; the worker's `eventSink.ts` persists.
-- Only `packages/agent` imports `@openai/agents`.
-- Only `packages/browser` imports `playwright`.
-- Only the database module imports `drizzle-orm`.
+## Architecture
 
-## 6. Agent design
+The repository is an npm workspaces monorepo with a Next.js application, a standalone worker, and shared packages.
 
-**One agent, many tools.** There are no separate planner/verifier agents and no handoffs.
+### Main components
 
-- **Planning** is the `update_plan` tool. The plan is stored in run context and persisted as a PLAN step.
-- **Extraction** is the `extract` tool: a plain nested LLM call (not an agent) that turns page text + instruction into JSON.
-- **Finishing** is enforced by the agent's `outputType` (Zod `FinalResult`). The run ends when the model returns a valid final output.
-- **Result data** must come from `record_finding` calls plus verified page content. Never invent data.
+| Component | Responsibility |
+| --- | --- |
+| `src/` | Next.js UI and API routes for creating, viewing, streaming, and cancelling tasks |
+| `worker/` | Polls for queued tasks, runs the agent, persists events, handles cancellation and cleanup |
+| `packages/agent/` | The OpenAI Agents SDK agent, prompts, tools, output schemas, guardrails, and run logic |
+| `packages/browser/` | Playwright browser session, page snapshots, screenshots, waiting, and browser interruptions |
+| `packages/db/` | Drizzle database client, schema, migrations, and repositories |
+| `packages/shared/` | Shared types, constants, and environment validation |
+| `drizzle/` | Generated PostgreSQL migrations |
+| `docs/` | Architecture and data-model notes |
 
-### Agent context (`AgentContext`)
+### Request lifecycle
 
-Passed via the SDK run context and read by tools through `RunContext`:
+#### 1. A task is created
 
-- `taskId`
-- `session` (BrowserSession)
-- `plan: string[]`
-- `findings: Finding[]`
-- `stepCount: number`
-- `allowedDomains?: string[]`
-- `onEvent: (e: AgentEvent) => void`
+The task form sends a request to `POST /api/tasks`. The API validates the prompt, creates a database row, and returns the task ID. New tasks start in the `QUEUED` state.
 
-Tools stay stateless; all state lives in the context.
+#### 2. The worker claims the task
 
-### Tools
+The worker polls PostgreSQL. When it finds work, it claims one queued task atomically and changes it to `RUNNING`. The MVP processes one task at a time.
 
-| Tool                                  | Purpose                                                            |
-| ------------------------------------- | ------------------------------------------------------------------ |
-| `update_plan(steps)`                  | Write/revise the plan. Called first and whenever the plan changes. |
-| `navigate(url)`                       | Open a URL (checked against domain policy). Returns a snapshot.    |
-| `observe()`                           | Return current page snapshot.                                      |
-| `click(elementId)`                    | Click an element by number from the latest snapshot.               |
-| `type_text(elementId, text, submit?)` | Fill an input, optionally press Enter.                             |
-| `select(elementId, value)`            | Choose a dropdown/filter option.                                   |
-| `scroll(direction)`                   | Scroll to load more content.                                       |
-| `go_back()`                           | Browser back.                                                      |
-| `extract(instruction)`                | Structured extraction from the current page via nested LLM call.   |
-| `record_finding(item)`                | Save a candidate result with its source URL.                       |
+#### 3. The agent controls a browser
 
-Rules for tools:
+The worker launches a `BrowserSession`, builds an `AgentContext`, and starts the single Browser Agent through the OpenAI Agents SDK.
 
-- One file per tool in `packages/agent/src/tools/`, exported through `tools/index.ts`.
-- Parameters defined with Zod. Keep descriptions short and imperative; they are prompt text.
-- Return compact strings. Tool output is the biggest context cost.
-- Errors are returned as readable strings the model can act on, not thrown (except fatal session errors).
+The agent has tools for:
 
-### Observation strategy
+- creating or updating a plan;
+- navigating to a URL;
+- observing the current page;
+- clicking numbered page elements;
+- entering text;
+- selecting options;
+- scrolling and going back;
+- extracting structured information from page text;
+- recording a finding with its source URL.
 
-Never send raw HTML to the model. `buildSnapshot` produces:
+#### 4. Pages are reduced to useful observations
 
-- page URL and title
-- a numbered list of visible interactive elements, e.g. `[12] button "Filters"`, `[13] input "Search"`
-- trimmed main-content text
-- hard caps on element count and text length
+The browser layer does not send raw HTML to the model. It creates a compact snapshot containing the page URL, title, visible interactive elements, and trimmed main-content text. Interactive elements receive temporary numbers such as `[12] button "Filters"` or `[13] input "Search"`.
 
-The model refers to elements **only by number**. `elementRegistry` maps number -> Playwright locator and is **invalidated on every navigation or major DOM change**, forcing a fresh `observe`. Screenshots are saved as artifacts for the UI; vision is an optional fallback, not the default.
+The agent can act only on numbers from the latest snapshot. After navigation or a meaningful page change, those numbers are invalidated and the agent must observe again. This reduces stale-element errors and keeps the model’s context manageable.
 
-### SDK usage
+#### 5. Progress is persisted and streamed
 
-- Run with `stream: true` and iterate events; map each to an `AgentEvent` in `events/mapStreamEvent.ts`.
-- Set `maxTurns` (default 40) as the hard step budget. On exceeding it, catch the error and return a best-effort result from `ctx.findings`.
-- Prune old snapshots from history (SDK input-filter hook, or truncate tool outputs) so only the latest snapshot stays in full.
-- Built-in SDK tracing stays on; tag traces with `taskId`. The `Step` table is the source of truth for the UI.
-- Risky actions (checkout, login, form submit) must use tool approval and pause for a human decision. Not required for the first cut.
-- SDK signatures change between versions. Check current `@openai/agents` docs before relying on event names or options.
+The agent reports events through `onEvent`. The worker’s event sink converts those events into ordered `Step` rows and stores screenshots when available.
 
-### System prompt rules (`prompts/system.md`)
+The task page opens an SSE connection to `/api/tasks/stream`. The API reads new steps from PostgreSQL and streams them to the browser, so the user sees progress without refreshing the page.
 
-1. Start by calling `update_plan` with steps and the exact constraints.
-2. Call `observe` after anything that may have changed the page.
-3. Refer to elements only by numbers from the latest observation.
-4. Use `extract` for lists of items instead of reading manually.
-5. Save every candidate with `record_finding`, including the source URL.
-6. If an action fails twice, try a different approach and update the plan.
-7. Stop when constraints are satisfied. Never invent data.
+#### 6. Findings become the final answer
 
-## 7. Data model (Drizzle)
+The agent records candidates through `record_finding`. Each finding contains data and a required source URL. The final result must match the `FinalResult` Zod schema before the worker saves it to the task.
 
-- **Task**: `id, prompt, status (QUEUED|RUNNING|SUCCEEDED|FAILED|CANCELLED), plan JSONB?, result JSONB?, error?, maxSteps, createdAt, startedAt?, finishedAt?`
-- **Step**: `id, taskId, index, type (PLAN|TOOL_CALL|MESSAGE|ERROR), toolName?, args JSONB?, outputSummary?, screenshotPath?, durationMs?, createdAt` with a unique constraint on `(taskId, index)`
-- **Finding**: `id, taskId, data JSONB, sourceUrl, createdAt`
+This gives the application a simple evidence rule: results should come from pages visited during the run and recorded findings, not from an unsupported answer generated from memory.
 
-Conventions:
+#### 7. Cleanup is always attempted
 
-- Real columns for anything filtered/sorted; `JSONB` for flexible blobs. Validate JSONB values with Zod on read and write.
-- `Step.index` comes from `ctx.stepCount`.
-- Job claim uses raw SQL with `FOR UPDATE SKIP LOCKED` in `worker/queue.ts`.
-- Export one Drizzle database client from the database module for application and worker access.
-- Use `npm run db:generate` to generate migrations, then `npm run db:migrate` to apply them. Use `npm run db:push` for quick local schema syncing without a migration file.
+The worker handles normal completion, errors, timeouts, cancellation, and process shutdown. It flushes pending events, preserves partial findings when possible, updates the task status, stops cancellation monitoring, and closes the Playwright browser in `finally`.
 
-## 8. End-to-end flow
+## Safety and failure handling
 
-1. `TaskForm` -> `POST /api/tasks` -> `taskRepo.create()` (QUEUED).
-2. Worker loop claims the task (-> RUNNING).
-3. `runTask.ts` launches `BrowserSession`, builds `AgentContext`, calls `runBrowserTask()`.
-4. Agent loops: `update_plan` -> tools -> ... Each tool call emits an `AgentEvent`; `eventSink` writes a `Step` (and screenshot).
-5. `stream/route.ts` polls `stepRepo.listAfter(cursor)` and pushes SSE; `useTaskStream` updates the timeline.
-6. Agent returns `FinalResult` (validated by `outputType`). Worker saves it, sets SUCCEEDED, closes the browser.
-7. On error/timeout/cancel: set FAILED/CANCELLED, save partial findings, always close the browser in `finally`.
+The project treats browser automation as a controlled workflow rather than an unlimited agent loop.
 
-## 9. Safety and failure handling
+- **Step budget:** every task has a maximum number of agent turns; the default is 40.
+- **Task timeout:** the worker aborts runs that exceed the configured wall-clock limit.
+- **Cancellation:** queued and running tasks can be cancelled from the task page.
+- **Domain checks:** navigation is checked by the agent’s URL policy before a page is opened.
+- **Loop detection:** repeated actions on the same page can trigger a warning and graceful failure.
+- **Stale element protection:** actions against old element numbers ask the agent to observe again.
+- **Cookie and dialog handling:** common browser interruptions are handled in the Playwright layer.
+- **Captcha and login walls:** the agent does not attempt to bypass them; the task should stop and explain the limitation.
+- **Evidence tracking:** findings require source URLs, and the final output is schema-validated.
 
-- **Domain policy**: `navigate` checks allowlist/blocklist before opening any URL.
-- **Loop detection**: same action + same URL repeated (3x) -> inject a warning into the next tool output; then fail gracefully.
-- **Stale element IDs**: any action on an invalid ID returns "Page changed, call observe."
-- **Popups/cookie banners**: handled in `browser/interruptions`, not by the model.
-- **Captcha / login walls**: record a step marked "needs human" and stop; do not attempt to bypass.
-- **Hallucination control**: every finding needs a `sourceUrl`; final items must come from recorded findings.
-- **Budgets**: `maxTurns`, wall-clock timeout, per-task browser cleanup.
+This is still an MVP. It should not be treated as a production system for high-stakes decisions, unrestricted account access, or actions that have irreversible side effects.
 
-## 10. Conventions
+## Tech stack
 
-- TypeScript strict; no `any` without a comment explaining why.
-- Env vars are parsed once via Zod in `packages/shared/src/env.ts`. Never read `process.env` elsewhere.
-- Prompts live in `.md` files, not inline strings.
-- Keep tool outputs and snapshots small. When in doubt, truncate.
-- Log with a `taskId` on every line in the worker.
-- No secrets in the repo. Use `.env`; keep `.env.example` current.
-- Keep functions small and each package independently testable.
+- TypeScript with strict type checking
+- Next.js 16 and React 19
+- OpenAI Agents SDK for TypeScript
+- Playwright for browser automation
+- PostgreSQL 18 in Docker
+- Drizzle ORM and generated migrations
+- Zod for validation
+- npm workspaces for package management
 
-## 11. Commands
+## Getting started
 
-```
-docker compose up -d                          # start Postgres
+### Prerequisites
+
+- Node.js with npm
+- Docker Desktop or a Docker-compatible runtime
+- An OpenAI API key
+
+### 1. Install dependencies
+
+```bash
 npm install
-npm run db:generate                           # generate a Drizzle migration
-npm run db:migrate                             # apply migrations
-npm run db:studio                              # inspect DB
-npm run cli -- "<task>"                       # run agent from terminal (no DB/UI)
-npm --workspace apps/worker run dev           # start worker
-npm --workspace apps/web run dev              # start web
 ```
 
-## 12. Build order (status checklist)
+### 2. Start PostgreSQL
 
-- [ ] `packages/browser`: BrowserSession + snapshot, verified by hand with no LLM
-- [ ] `packages/agent`: tools + single agent, proven via `scripts/cli.ts`
-- [ ] `schemas/finalResult` + `update_plan` + structured output
-- [ ] `packages/db`: schema, migration, repositories
-- [ ] `apps/worker`: queue claim, runTask, eventSink
-- [ ] `apps/web`: task form, task page, SSE timeline, result table
-- [ ] Hardening: loop detector, interruptions, screenshots, cancellation, domain policy
-- [ ] Later: approvals for risky actions, optional verification step
+```bash
+docker compose up -d
+```
 
-## 13. Do / Don't for coding agents
+The included Docker Compose file starts PostgreSQL with these local development credentials:
 
-**Do**
+```text
+postgresql://myuser:mypassword@localhost:5432/browser_agent
+```
 
-- Respect the dependency rules in section 5.
-- Update this file when you change architecture, tools, or the data model.
-- Test browser code without the LLM first; test the agent via the CLI before wiring the DB.
+### 3. Configure environment variables
 
-**Don't**
+Create `.env` from `.env.example` and set the database connection and OpenAI key. For the included Docker Compose service, the database URL should look like this:
 
-- Don't add extra agents, handoffs, Redis, or new services without being asked.
-- Don't import Playwright, Drizzle ORM, or the Agents SDK outside their owning package.
-- Don't send raw HTML or full-page dumps to the model.
-- Don't run agent loops inside Next.js route handlers.
-- Don't fabricate results or skip `sourceUrl` on findings.
+```dotenv
+DATABASE_URL="postgresql://myuser:mypassword@localhost:5432/browser_agent"
+OPENAI_API_KEY="your-api-key"
+HEADLESS=false
+```
+
+Keep `.env` private. It is ignored by Git and should never be committed.
+
+### 4. Apply the database migrations
+
+```bash
+npm run db:migrate
+```
+
+### 5. Start the web app
+
+In one terminal:
+
+```bash
+npm run dev
+```
+
+Open the local URL printed by Next.js, usually `http://localhost:3000`.
+
+### 6. Start the worker
+
+In a second terminal:
+
+```bash
+npm run worker
+```
+
+The web app creates tasks, but the worker performs them. Both processes need access to the same `.env` file and PostgreSQL database.
+
+## Useful commands
+
+| Command | Purpose |
+| --- | --- |
+| `npm install` | Install all workspace dependencies |
+| `docker compose up -d` | Start local PostgreSQL |
+| `npm run dev` | Start the Next.js development server |
+| `npm run worker` | Start the task worker |
+| `npm --workspace @app/worker run dev` | Start the worker with file watching |
+| `npm run db:generate` | Generate a Drizzle migration from schema changes |
+| `npm run db:migrate` | Apply migrations to PostgreSQL |
+| `npm run db:push` | Push the schema directly for quick local development |
+| `npm run db:studio` | Open Drizzle Studio |
+| `npm run test:agent` | Run the current agent and browser tests |
+| `npm run browser:smoke` | Run the browser smoke script |
+| `npm run build` | Build the Next.js application |
+| `npm run lint` | Run ESLint |
+
+## Project layout
+
+```text
+browser-agent/
+├── src/
+│   ├── app/                         # Next.js pages and API routes
+│   │   ├── (main)/                  # Task form and live task page
+│   │   └── api/tasks/               # Create, read, stream, and cancel APIs
+│   ├── components/                  # UI components
+│   ├── hooks/                       # Client-side hooks
+│   └── lib/                         # API clients and shared UI types
+├── worker/
+│   └── src/
+│       ├── main.ts                  # Polling loop and graceful shutdown
+│       ├── queue.ts                 # PostgreSQL task claiming and recovery
+│       ├── runTask.ts               # Browser, agent, persistence, cleanup
+│       ├── eventSink.ts             # Agent events -> database steps
+│       └── cancellation.ts          # Cancellation watcher
+├── packages/
+│   ├── agent/                       # Agent, tools, prompts, schemas, safety
+│   ├── browser/                     # Playwright abstraction and snapshots
+│   ├── db/                          # Drizzle client and repositories
+│   └── shared/                      # Shared package code
+├── drizzle/                         # Generated database migrations
+├── docs/                            # Architecture and data documentation
+├── docker-compose.yml               # Local PostgreSQL service
+└── package.json                     # Workspace scripts and dependencies
+```
+
+## Data model
+
+The application currently stores three core concepts:
+
+- **Task:** the user prompt, lifecycle status, plan, final result, error, and timestamps.
+- **Step:** an ordered timeline event such as a plan, tool call, message, or error. A step may reference a screenshot.
+- **Finding:** structured candidate data linked to the task and the page URL where it was found.
+
+Task statuses are:
+
+```text
+QUEUED → RUNNING → SUCCEEDED
+                  ├→ FAILED
+                  └→ CANCELLED
+```
+
+## Design principles
+
+1. **Keep the agent focused.** There is one agent with many small browser tools; planning is represented as a tool call rather than a separate planner agent.
+2. **Keep package boundaries clear.** The browser package knows Playwright, the agent package knows the Agents SDK, and the database package knows Drizzle.
+3. **Prefer compact observations.** Useful page snapshots cost less context and are easier for the model to reason about than raw HTML.
+4. **Make progress durable.** The database stores steps and findings while the task is running, not only after it finishes.
+5. **Make answers verifiable.** Candidate findings carry source URLs and final output is validated with Zod.
+6. **Fail safely.** Budgets, cancellation, cleanup, and explicit failure states are part of the normal lifecycle.
+
+## Current MVP scope
+
+The current implementation is intended for exploration and development. It supports web research and structured result collection, but it does not yet provide a complete approval system for sensitive actions such as purchasing, submitting important forms, or accessing authenticated accounts.
+
+Possible future improvements include human approval checkpoints, stronger domain policies, richer authentication support, multi-worker scaling, better task retries, and production observability.
+
+## Further reading
+
+- [Architecture notes](docs/ARCHITECTURE.md)
+- [Data and migration conventions](docs/DATA.md)
+- [Contributor and agent instructions](AGENTS.md)
+
+## A short social post
+
+> I built Browser Agent, an autonomous web research assistant that turns plain-English requests into observable browser workflows. It uses the OpenAI Agents SDK and Playwright to plan a task, navigate real websites, extract structured information, record source URLs, and stream every step live to a Next.js UI. PostgreSQL acts as both the task queue and the source of truth for progress, findings, and results. The project is an MVP focused on making browser automation transparent, inspectable, and safer to understand. 🚀
+
+## License
+
+No license has been added yet. Until a license is published, assume that normal copyright restrictions apply to this repository.
