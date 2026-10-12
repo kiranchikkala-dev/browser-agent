@@ -77,7 +77,7 @@ export const steps = pgTable(
 export const findings = pgTable(
   "findings",
   {
-    id: uuid("id").primaryKey(),
+    id: uuid("id").defaultRandom().primaryKey(),
     taskId: uuid("task_id")
       .notNull()
       .references(() => tasks.id, { onDelete: "cascade" }),

@@ -11,12 +11,10 @@ const MAX_TEXT = 4000;
  * The number the model sees == the attribute value, so click(12) is just
  * locator('[data-agent-id="12"]'). Old ids are wiped on every snapshot.
  */
-export async function buildSnapshot(page: Page): Promise<Snapshot> {
-  return page.evaluate(
-    ({ attr, maxElements, maxText }) => {
+function buildSnapshotInPage({ attr, maxElements, maxText }: { attr: string; maxElements: number; maxText: number }) {
       document
         .querySelectorAll(`[${attr}]`)
-        .forEach((el) => el.removeAttribute(attr));
+        .forEach(function (el) { el.removeAttribute(attr); });
 
       const selector = [
         "a[href]",
@@ -34,10 +32,11 @@ export async function buildSnapshot(page: Page): Promise<Snapshot> {
         "[onclick]",
       ].join(",");
 
-      const clean = (s: string | null | undefined, n: number) =>
-        (s ?? "").replace(/\s+/g, " ").replace(/"/g, "'").trim().slice(0, n);
+      const clean = function (s: string | null | undefined, n: number) {
+        return (s ?? "").replace(/\s+/g, " ").replace(/"/g, "'").trim().slice(0, n);
+      };
 
-      const isVisible = (el: Element) => {
+      const isVisible = function (el: Element) {
         const r = el.getBoundingClientRect();
         if (r.width < 2 || r.height < 2) return false;
         const s = getComputedStyle(el);
@@ -48,7 +47,7 @@ export async function buildSnapshot(page: Page): Promise<Snapshot> {
         );
       };
 
-      const inView = (el: Element) => {
+      const inView = function (el: Element) {
         const r = el.getBoundingClientRect();
         return (
           r.bottom > -50 &&
@@ -58,7 +57,7 @@ export async function buildSnapshot(page: Page): Promise<Snapshot> {
         );
       };
 
-      const labelOf = (el: Element) => {
+      const labelOf = function (el: Element) {
         const h = el as HTMLElement;
         const img = el.querySelector("img[alt]") as HTMLImageElement | null;
         return (
@@ -72,7 +71,7 @@ export async function buildSnapshot(page: Page): Promise<Snapshot> {
         );
       };
 
-      const roleOf = (el: Element) => {
+      const roleOf = function (el: Element) {
         const explicit = el.getAttribute("role");
         if (explicit) return explicit;
         const tag = el.tagName.toLowerCase();
@@ -112,7 +111,7 @@ export async function buildSnapshot(page: Page): Promise<Snapshot> {
         if (tag === "select") {
           item.options = Array.from((el as HTMLSelectElement).options)
             .slice(0, 15)
-            .map((o) => clean(o.text, 40));
+            .map(function (o) { return clean(o.text, 40); });
           item.value = clean(
             (el as HTMLSelectElement).selectedOptions[0]?.text,
             40,
@@ -141,7 +140,21 @@ export async function buildSnapshot(page: Page): Promise<Snapshot> {
           viewport: window.innerHeight,
         },
       };
-    },
-    { attr: ID_ATTR, maxElements: MAX_ELEMENTS, maxText: MAX_TEXT },
-  );
+}
+
+export async function buildSnapshot(page: Page): Promise<Snapshot> {
+  // tsx adds its __name helper around typed nested functions. A browser page
+  // does not have that Node-side helper, so remove the wrappers before sending
+  // the self-contained function to Playwright.
+  const pageFunction = buildSnapshotInPage
+    .toString()
+    .replaceAll("__name(", "(")
+    .replace(/,\"(?:clean|isVisible|inView|labelOf|roleOf)\"\)/g, ")");
+
+  const args = JSON.stringify({
+    attr: ID_ATTR,
+    maxElements: MAX_ELEMENTS,
+    maxText: MAX_TEXT,
+  });
+  return page.evaluate(`(${pageFunction})(${args})`);
 }

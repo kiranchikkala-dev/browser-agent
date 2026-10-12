@@ -168,7 +168,7 @@ export class BrowserSession {
       const dy = window.innerHeight * 0.8 * (dir === "down" ? 1 : -1);
       window.scrollBy(0, dy);
     }, direction);
-    await this.page.waitForTimeout(400); // lazy-loaded content
+    await this.page.waitForTimeout(150); // allow lazy-loaded content to start
     this.stale = true; // what is "in view" changed
   }
 

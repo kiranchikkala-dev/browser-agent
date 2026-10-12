@@ -1,4 +1,4 @@
-import { and, eq, sql } from "drizzle-orm";
+import { and, eq, or, sql } from "drizzle-orm";
 import { db, tasks } from "../..";
 
 export type ClaimedTask = { id: string; prompt: string; maxSteps: number };
@@ -20,6 +20,20 @@ export const taskRepo = {
       .from(tasks)
       .where(eq(tasks.id, id));
     return row?.status ?? null;
+  },
+
+  async cancel(id: string) {
+    const [row] = await db
+      .update(tasks)
+      .set({ status: "CANCELLED", finishedAt: new Date() })
+      .where(
+        and(
+          eq(tasks.id, id),
+          or(eq(tasks.status, "QUEUED"), eq(tasks.status, "RUNNING")),
+        ),
+      )
+      .returning();
+    return row ?? null;
   },
 
   /**

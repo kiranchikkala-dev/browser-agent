@@ -57,6 +57,13 @@
       "when": 1791706660410,
       "tag": "0007_absent_wendell_rand",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1791785913497,
+      "tag": "0008_free_wolf_cub",
+      "breakpoints": true
     }
   ]
 }

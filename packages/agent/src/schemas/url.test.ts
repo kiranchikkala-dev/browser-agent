@@ -4,6 +4,7 @@ import { zodResponsesFunction, zodTextFormat } from "openai/helpers/zod";
 import { z } from "zod";
 import { FinalResult } from "./finalResult";
 import { urlSchema } from "./url";
+import { navigate } from "../tools/navigate";
 
 test("URL schemas stay compatible with OpenAI structured outputs", () => {
   const outputSchema = zodTextFormat(FinalResult, "output").schema as {
@@ -22,6 +23,11 @@ test("URL schemas stay compatible with OpenAI structured outputs", () => {
     function: () => undefined,
   }).parameters as { properties: { url: Record<string, unknown> } };
   assert.equal(findingSchema.properties.url.format, undefined);
+  assert.equal(
+    (navigate.parameters as { properties: { url: Record<string, unknown> } })
+      .properties.url.format,
+    undefined,
+  );
 
   assert.equal(urlSchema.safeParse("https://example.com/item").success, true);
   assert.equal(urlSchema.safeParse("not a URL").success, false);

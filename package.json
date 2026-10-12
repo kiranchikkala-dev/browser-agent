@@ -9,7 +9,7 @@
     "start": "next start",
     "worker": "npm run start -w @app/worker",
     "cli": "tsx scripts/cli.ts",
-    "test:agent": "node --import tsx --test packages/agent/src/schemas/url.test.ts",
+    "test:agent": "node --import tsx --test packages/agent/src/schemas/url.test.ts packages/browser/src/waiting.test.ts packages/agent/src/tools/search.test.ts",
     "lint": "eslint",
     "db:generate": "drizzle-kit generate --config packages/db/drizzle.config.ts",
     "db:migrate": "drizzle-kit migrate --config packages/db/drizzle.config.ts",

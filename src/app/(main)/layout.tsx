@@ -5,7 +5,9 @@ import React from "react";
 const Layout = ({ children }: { children: React.ReactNode }) => {
   return (
     <SidebarProvider>
-      <AppSidebar />
+      <React.Suspense fallback={null}>
+        <AppSidebar />
+      </React.Suspense>
       <div className="flex-1">{children}</div>
     </SidebarProvider>
   );

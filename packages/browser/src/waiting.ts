@@ -1,5 +1,8 @@
 import type { Page } from "playwright";
 
+export const NETWORK_IDLE_TIMEOUT_MS = 750;
+export const RENDER_BUFFER_MS = 100;
+
 /**
  * Pragmatic "page is ready enough" wait for an agent: DOM loaded, then give
  * network a short chance to go quiet, then a small buffer for client-side
@@ -11,7 +14,7 @@ export async function waitForSettled(page: Page) {
     .waitForLoadState("domcontentloaded", { timeout: 10_000 })
     .catch(() => {});
   await page
-    .waitForLoadState("networkidle", { timeout: 3_000 })
+    .waitForLoadState("networkidle", { timeout: NETWORK_IDLE_TIMEOUT_MS })
     .catch(() => {});
-  await page.waitForTimeout(250);
+  await page.waitForTimeout(RENDER_BUFFER_MS);
 }

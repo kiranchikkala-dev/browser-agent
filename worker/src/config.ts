@@ -10,7 +10,7 @@ const schema = z.object({
   CANCEL_CHECK_MS: z.coerce.number().int().positive().default(2000),
   HEADLESS: z
     .enum(["true", "false"])
-    .default("true")
+    .default("false")
     .transform((v) => v === "true"),
   SCREENSHOT_DIR: z.string().default("data/screenshots"),
 });
